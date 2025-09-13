@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Corrections — Logigrammes — Série n°2 </title>
+  <style>
+  /* Base */
+  body{
+    margin:0;
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial;
+    background:#f9fafb;
+    color:#1a1a1a;
+    display:flex; min-height:100dvh; align-items:center; justify-content:center;
+  }
+
+  /* L'app devient une colonne flexible */
+  .app{
+    width:min(1100px,92vw);
+    display:flex;
+    flex-direction:column;
+    /* évite que la signature masque le bas */
+  }
+
+  /* Barre d’outils */
+  .toolbar{
+    display:flex; flex-wrap:wrap; gap:.5rem; align-items:center;
+    background:#fff; border:1px solid #ccc; border-radius:12px; padding:.6rem .8rem;
+    box-shadow:0 4px 12px rgba(0,0,0,.08);
+  }
+  .title{ font-weight:800; margin-right:auto; letter-spacing:.3px; }
+  select, .btn{
+    appearance:none; border:1px solid #ccc; background:#f1f5f9; color:#222;
+    padding:.4rem .8rem; border-radius:8px; cursor:pointer; font-weight:600; transition:all .15s ease;
+  }
+  .btn:hover, select:hover{ background:#e5e9ef; }
+  .range{ accent-color:#3b82f6; }
+
+  /* Viewer + layout prennent toute la hauteur dispo */
+  .viewer{
+    position:relative; margin-top:12px; background:#fff; border:1px solid #ccc; border-radius:12px;
+    padding:12px; box-shadow:0 8px 20px rgba(0,0,0,.08);
+    flex:1;                 /* NEW */
+    display:flex;           /* NEW */
+    flex-direction:column;  /* NEW */
+    /* Gestes tactiles : on gère nous-mêmes le scroll/gestes dans le viewer */
+.viewer { touch-action: none; }
+
+  }
+  .layout{
+    flex:1; /* NEW */
+    display:grid;
+    grid-template-columns:1.3fr .9fr;
+    gap:12px;
+  }
+  @media (max-width:900px){ .layout{ grid-template-columns:1fr; } }
+
+  /* Colonne gauche = colonne flexible : la scène peut grandir */
+  .layout > div:first-child{
+    display:flex;           /* NEW */
+    flex-direction:column;  /* NEW */
+    min-height:0;           /* NEW: évite les débordements */
+  }
+
+  /* Scène */
+  .stage{
+    position:relative; width:100%;
+    aspect-ratio:16/9; background:#f3f4f6; border-radius:8px; overflow:hidden;
+    display:grid; place-items:center;
+    flex:1; /* NEW : occupe la hauteur */
+  }
+  .layer{
+    position:absolute; inset:0; object-fit:contain; width:100%; height:100%;
+    opacity:0; transition:opacity 320ms ease; pointer-events:none;
+  }
+  .layer.visible{ opacity:1; }
+
+  /* Légende + pastilles */
+  .legend{ display:flex; justify-content:space-between; align-items:center; gap:.8rem; margin-top:.6rem; font-size:.92rem; color:#444; }
+  .dots{ display:flex; gap:.35rem; align-items:center; flex-wrap:wrap; }
+  .dot{ width:.7rem; height:.7rem; border-radius:999px; background:#d1d5db; border:1px solid #9ca3af; }
+  .dot.active{ background:#3b82f6; border-color:#2563eb; }
+
+  /* Bloc explications */
+  .explanation{
+    background:#f0f9ff; border-left:4px solid #3b82f6; border-radius:6px; padding:12px; line-height:1.5;
+  }
+  .muted{ color:#555; }
+
+  /* Signature en bas à droite DU GRAND BLOC BLANC (.viewer) */
+  .signature{
+    text-align:right;
+    font-size:.8rem;
+    color:#1e3a8a;
+    font-weight:600;
+    margin-top:12px;
+    padding-top:6px;
+    border-top:1px solid #e5e7eb;
+  }
+
+  /* === PLEIN ÉCRAN === */
+  /* Quand .app passe en fullscreen, elle occupe TOUT l'écran */
+  .app:fullscreen,
+  .app:-webkit-full-screen{
+    width:100vw;
+    height:100dvh;
+    max-width:none;
+  }
+  /* Forcer les descendants à prendre la hauteur */
+  .app:fullscreen .viewer,
+  .app:-webkit-full-screen .viewer{
+    flex:1;
+  }
+  .app:fullscreen .layout,
+  .app:-webkit-full-screen .layout{
+    height:100%;
+  }
+</style>
+
+</head>
+
+<body>
+  <div class="app">
+    <div class="toolbar">
+      <div class="title">Corrections — Logigrammes — Série n°2</div>
+      <label for="exercise" class="muted">Exercice</label>
+      <select id="exercise"></select>
+      <button id="play"  class="btn" aria-pressed="false" title="Lecture/Pause (Espace)">Lecture</button>
+      <button id="prev"  class="btn" title="Précédent (←)">⟵</button>
+      <button id="next"  class="btn" title="Suivant (→)">⟶</button>
+      <button id="reset" class="btn" title="Réinitialiser (R)">Réinit</button>
+      <button id="fullscreen" class="btn" title="Plein écran (F)" aria-pressed="false">⛶ Plein écran</button>
+
+      <label for="speed" class="muted">Vitesse</label>
+      <input id="speed" class="range" type="range" min="400" max="4000" step="100" value="1200" />
+    </div>
+
+    <div class="viewer">
+  <div class="layout">
+    <!-- Colonne gauche : images -->
+    <div>
+      <div class="stage" id="stage"></div>
+      <div class="legend">
+        <div id="status"></div>
+        <div class="dots" id="dots"></div>
+      </div>
+    </div>
+
+    <!-- Colonne droite : explications -->
+    <div>
+      <div class="explanation">
+        <div id="exTitle" style="font-weight:700;margin-bottom:.3rem;"></div>
+        <div id="stepTitle" style="font-weight:600;margin-bottom:.2rem;"></div>
+        <div id="expl"></div>
+        <div class="muted" style="margin-top:.6rem;font-size:.9rem;">
+          Astuce : <b>Espace</b> lecture/pause • <b>←</b>/<b>→</b> étape précédente/suivante • <b>R</b> réinit.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 👉 Signature en bas à droite du grand bloc blanc -->
+  <div class="signature">
+    Technologie – Les algorithmes -  Vincent Belhaire<br>
+  </div>
+</div>
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+  const MANIFEST = [
+    {
+      "title": "1 - Porte de garage",
+      "steps": [
+        { "src": "1-Porte de garage/Aucun bouton.svg", "label": "Scénario 1",
+          "explanation": "👉 L’utilisateur n’appuie sur aucun bouton. La télécommande attend, en boucle, qu’un bouton soit appuyé." },
+
+        { "src": "1-Porte de garage/Porte ouverte.svg", "label": "Scénario 2",
+          "explanation": "👉 L’utilisateur appuie sur le bouton 1, la télécommande envoie l’ordre d’ouvrir la porte du garage." },
+
+        { "src": "1-Porte de garage/Porte 2.svg", "label": "Scénario 3",
+          "explanation": "👉L’utilisateur appuie sur le bouton 2, la télécommande envoie l’ordre de fermer la porte du garage." }
+      ]
+    },
+    {
+      "title": "2 - Machine à café",
+      "steps": [
+        { "src": "2-Machine à café/Attente.svg", "label": "Scénario 1",
+          "explanation": "👉 La machine à café attend que l’utilisateur appuie sur le bouton pour l’activer." },
+
+        { "src": "2-Machine à café/Ajouter de l'eau.svg", "label": "Scénario 2",
+          "explanation": "👉 L’utilisateur appuie sur le bouton. La machine vérifie la présence d’eau. Il manque de l’eau et elle demande à l’utilisateur d’en ajouter." },
+
+        { "src": "2-Machine à café/Chauffer.svg", "label": "Scénario 3",
+          "explanation": "👉 L’utilisateur appuie sur le bouton. La machine vérifie la présence d’eau. Il y a de l’eau. Elle vérifie si l’eau a une température supérieure à 88 °C. Ce n’est pas le cas : la machine chauffe l’eau." },
+
+        { "src": "2-Machine à café/Servir.svg", "label": "Scénario 4",
+          "explanation": "👉 L’utilisateur appuie sur le bouton. La machine vérifie la présence d’eau. Il y a de l’eau. Elle vérifie si l’eau a une température supérieure à 88 °C. C’est le cas : la machine sert le café.<br>👉 Si la température avait été inférieure à 88 °C, la machine aurait chauffé l’eau automatiquement jusqu’à atteindre la bonne température, puis elle aurait servi le café." }
+      ]
+    },
+    {
+      "title": "3 - Réception d’un hôtel",
+      "steps": [
+	{ "src": "3-Réception d'un hôtel/Jour en attente.svg", "label": "Scénario 1",
+          "explanation": "👉 Le système vérifie s’il fait jour ou nuit. C’est le jour (8h00 – 22h00) : le concierge est présent.<br>Le système attend, en boucle, que le concierge appuie sur le bouton.<br>Il se réinterroge ,en boucle, afin de savoir s’il fait jour ou nuit." },
+
+        { "src": "3-Réception d'un hôtel/Ouverture concierge.svg", "label": "Scénario 2",
+          "explanation": "👉 Le système vérifie s’il fait jour ou nuit. C’est le jour (8h00 – 22h00).<br>Il attend, en boucle, que le concierge appuie sur le bouton.<br>Lorsque le concierge appuie, le système déverrouille la porte, attend 5 secondes, puis la referme.<br>Ensuite, il se réinterroge afin de savoir s’il fait jour ou nuit." },
+
+        { "src": "3-Réception d'un hôtel/Nuit digicode faux.svg", "label": "Scénario 3",
+          "explanation": "👉Le système vérifie s’il fait jour ou nuit. Cette fois-ci, c’est la nuit (22h00 – 8h00).<br>Il n’y a pas de veilleur de nuit : le client doit utiliser un digicode pour entrer. Le système attend, en boucle, que le code soit correct.<br>Le client entre un code faux : le système revient à son état initial et se réinterroge afin de savoir s’il fait jour ou nuit." },
+
+	{ "src": "3-Réception d'un hôtel/Digicode ok.svg", "label": "Scénario 4",
+          "explanation": "👉 Le système vérifie s’il fait jour ou nuit. Cette fois-ci, c’est la nuit (22h00 – 8h00).<br>Il n’y a pas de veilleur de nuit : le client doit utiliser un digicode.<br>Le client entre un code correct : le système déverrouille la porte, attend 5 secondes, puis la referme. Ensuite, il se réinterroge afin de savoir s’il fait jour ou nuit." }
+      ]
+    },
+        {
+      "title": "4 - Parking",
+      "steps": [
+        { "src": "4-Parking/Attente voiture.svg", "label": "Scénario 1",
+          "explanation": "👉 Le système ne détecte aucune voiture. Il attend, en boucle, l’arrivée d’un véhicule" },
+
+        { "src": "4-Parking/e1.svg", "label": "Scénario 2",
+          "explanation": "👉 Le système détecte une voiture à l’entrée. Il lit la plaque, l’enregistre dans la variable plaque et note l’heure d’arrivée dans la variable h_entrée. Il ouvre la barrière et attend, en boucle, que la voiture passe. La voiture n’a pas encore franchi la barrière." },
+
+        { "src": "4-Parking/e2.svg", "label": "Scénario 3 ",
+          "explanation": "👉 Le système détecte une voiture à l’entrée. Il lit la plaque, l’enregistre dans la variable plaque et note l’heure d’arrivée dans la variable h_entrée. Il ouvre la barrière et détecte le passage de la voiture, puis referme la barrière.Le système revient alors à son état initial et attend, en boucle, un nouveau véhicule." },
+
+        { "src": "4-Parking/Attente paiement.svg", "label": "Scénario 4",
+          "explanation": "👉 Le système détecte une voiture à la sortie. Il lit la plaque, calcule le prix à payer et l’affiche. Il attend, en boucle, que le client paie. Le client n’a pas encore payé." },
+
+{ "src": "4-Parking/Sattente passage.svg", "label": "Scénario 5",
+          "explanation": "👉 Le système détecte une voiture à la sortie. Il lit la plaque, calcule le prix à payer et l’affiche. Le client paie. Le système ouvre la barrière et attend, en boucle, que la voiture passe. Le client n’a pas encore franchi la barrière." },
+
+{ "src": "4-Parking/S ok.svg", "label": "Scénario 6",
+          "explanation": "👉Le système détecte une voiture à la sortie. Il lit la plaque, calcule le prix à payer et l’affiche. Le client paie. Le système ouvre la barrière et attend, en boucle, que la voiture passe. Le client franchit la barrière. Le système referme la barrière, revient à son état initial et attend, en boucle, un nouveau véhicule. " }
+      ]
+    }
+  ];
+
+  const stage = document.getElementById('stage');
+  const dotsEl = document.getElementById('dots');
+  const statusEl = document.getElementById('status');
+  const playBtn = document.getElementById('play');
+  const prevBtn = document.getElementById('prev');
+  const nextBtn = document.getElementById('next');
+  const resetBtn = document.getElementById('reset');
+  const speedInput = document.getElementById('speed');
+  const selectEl = document.getElementById('exercise');
+  const fsBtn = document.getElementById('fullscreen');
+const fsTarget = document.querySelector('.app'); // on met en plein écran TOUTE l'app pour garder la signature visible
+
+
+
+  const exTitleEl = document.getElementById('exTitle');
+  const stepTitleEl = document.getElementById('stepTitle');
+  const explEl = document.getElementById('expl');
+
+  let currentExercise = 0;
+  let idx = 0;
+  let playing = false;
+  let timer = null;
+  let stepDuration = parseInt(speedInput.value, 10);
+  let layers = [];
+
+  function initSelect(){
+    selectEl.innerHTML = '';
+    MANIFEST.forEach((ex, i) => {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = ex.title;
+      selectEl.appendChild(opt);
+    });
+    selectEl.addEventListener('change', () => {
+      stop();
+      currentExercise = parseInt(selectEl.value, 10);
+      loadExercise();
+    });
+  }
+
+  function buildStage(ex){
+    stage.innerHTML = '';
+    layers = ex.steps.map(step => {
+      const img = document.createElement('img');
+      img.className = 'layer';
+      img.alt = step.label;
+      img.src = step.src;
+      img.addEventListener('error', () => {
+        statusEl.textContent = '⚠️ Fichier introuvable : ' + (img.getAttribute('src') || '');
+        img.style.outline = '2px dashed #e11d48';
+      }, { once: true });
+      stage.appendChild(img);
+      return img;
+    });
+  }
+
+  function buildDots(len){
+    dotsEl.innerHTML = '';
+    for(let i=0;i<len;i++){ const d=document.createElement('div'); d.className='dot'; dotsEl.appendChild(d); }
+  }
+  function updateDots(iActive){
+    Array.from(dotsEl.children).forEach((d,i)=>d.classList.toggle('active', i===iActive));
+  }
+  function applyVisibility(){
+    layers.forEach((el,i)=> el.classList.toggle('visible', i===idx));
+  }
+  function setIndex(newIdx){
+    idx = Math.max(0, Math.min(layers.length-1, newIdx));
+    applyVisibility();
+    const ex = MANIFEST[currentExercise];
+    const step = ex.steps[idx];
+    statusEl.textContent = `Étape ${idx+1} / ${layers.length}`;
+    exTitleEl.textContent = ex.title;
+    stepTitleEl.textContent = step.label;
+    explEl.innerHTML = step.explanation;
+    updateDots(idx);
+  }
+
+  function next(){ if(idx < layers.length-1){ setIndex(idx+1); } else { setIndex(0); } }
+  function prev(){ if(idx > 0){ setIndex(idx-1); } }
+  function resetAll(){ stop(); setIndex(0); }
+
+  function tick(){
+    if(!playing) return;
+    next();
+    timer = setTimeout(tick, stepDuration);
+  }
+  function play(){
+    if(playing) return;
+    playing = true;
+    playBtn.setAttribute('aria-pressed','true');
+    playBtn.textContent = 'Pause';
+    timer = setTimeout(tick, stepDuration);
+  }
+  function stop(){
+    playing = false;
+    playBtn.setAttribute('aria-pressed','false');
+    playBtn.textContent = 'Lecture';
+    if(timer){ clearTimeout(timer); timer=null; }
+  }
+  function togglePlay(){ playing ? stop() : play(); }
+
+  speedInput.addEventListener('input', e => {
+    stepDuration = parseInt(e.target.value, 10);
+    if(playing){ stop(); play(); }
+  });
+  playBtn.addEventListener('click', togglePlay);
+  prevBtn.addEventListener('click', ()=>{ stop(); prev(); });
+  nextBtn.addEventListener('click', ()=>{ stop(); next(); });
+  resetBtn.addEventListener('click', resetAll);
+
+  window.addEventListener('keydown', (e) => {
+    if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) return;
+    if(e.code === 'Space'){ e.preventDefault(); togglePlay(); }
+    if(e.key === 'ArrowRight'){ e.preventDefault(); stop(); next(); }
+    if(e.key === 'ArrowLeft'){ e.preventDefault(); stop(); prev(); }
+    if(e.key.toLowerCase() === 'r'){ e.preventDefault(); resetAll(); }
+  });
+
+  function loadExercise(){
+    const ex = MANIFEST[currentExercise];
+    buildStage(ex);
+    buildDots(ex.steps.length);
+    setIndex(0);
+  }
+
+  initSelect();
+  loadExercise();
+  function isFullscreen() {
+  return document.fullscreenElement != null;
+}
+
+async function enterFullscreen() {
+  const el = fsTarget;
+  if (el.requestFullscreen) await el.requestFullscreen();
+  else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen(); // Safari
+}
+
+async function exitFullscreen() {
+  if (document.exitFullscreen) await document.exitFullscreen();
+  else if (document.webkitExitFullscreen) document.webkitExitFullscreen(); // Safari
+}
+
+async function toggleFullscreen() {
+  if (isFullscreen()) await exitFullscreen();
+  else await enterFullscreen();
+}
+
+document.addEventListener('fullscreenchange', () => {
+  const state = isFullscreen();
+  fsBtn.setAttribute('aria-pressed', state ? 'true' : 'false');
+  fsBtn.textContent = state ? 'Quitter plein écran' : '⛶ Plein écran';
+});
+
+// clic bouton
+fsBtn.addEventListener('click', toggleFullscreen);
+
+// raccourci clavier F (Esc sort du plein écran automatiquement)
+window.addEventListener('keydown', (e) => {
+  if (['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) return;
+  if (e.key.toLowerCase() === 'f') { e.preventDefault(); toggleFullscreen(); }
+});
+// ===== Gestes tactiles (swipe) =====
+const surface = document.querySelector('.viewer'); // ou '.stage' si tu veux limiter aux images
+let touchStartX = 0, touchStartY = 0, touchStartT = 0;
+
+const SWIPE_DIST = 50;   // distance minimale en px
+const SWIPE_TIME = 700;  // durée max en ms
+const ANGLE_TOL = 20;    // tolérance d'angle en degrés (pour bien séparer H/V)
+
+// Helpers
+function deg(absDy, absDx){ return Math.atan2(absDy, absDx) * 180 / Math.PI; }
+function isUI(el){ return Boolean(el.closest('input,select,button')); }
+
+// Changer d'exercice
+function nextExercise(){
+  stop();
+  currentExercise = (currentExercise + 1) % MANIFEST.length;
+  selectEl.value = currentExercise;
+  loadExercise();
+}
+function prevExercise(){
+  stop();
+  currentExercise = (currentExercise - 1 + MANIFEST.length) % MANIFEST.length;
+  selectEl.value = currentExercise;
+  loadExercise();
+}
+
+surface.addEventListener('touchstart', (e) => {
+  if (isUI(e.target)) return;          // ne pas capter sur les contrôles
+  if (e.touches.length !== 1) return;  // un seul doigt
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+  touchStartT = Date.now();
+}, { passive: true });
+
+surface.addEventListener('touchend', (e) => {
+  if (!touchStartT) return;
+  const t = Date.now() - touchStartT;
+  touchStartT = 0;
+  if (t > SWIPE_TIME) return;
+
+  const touch = e.changedTouches && e.changedTouches[0];
+  if (!touch) return;
+
+  const dx = touch.clientX - touchStartX;
+  const dy = touch.clientY - touchStartY;
+  const adx = Math.abs(dx), ady = Math.abs(dy);
+  if (adx < SWIPE_DIST && ady < SWIPE_DIST) return;
+
+  // Séparation horizontal vs vertical par l'angle
+  const a = deg(ady, adx); // angle vs horizontal
+  if (a <= ANGLE_TOL) {
+    // swipe horizontal : exercice
+    e.preventDefault();
+    if (dx < 0) nextExercise();   // ← swipe gauche = exercice suivant
+    else prevExercise();          // → swipe droite = exercice précédent
+    return;
+  }
+  if (a >= 90 - ANGLE_TOL) {
+    // swipe vertical : scénario
+    e.preventDefault();
+    stop();
+    if (dy < 0) next();  // ↑ suivant
+    else prev();         // ↓ précédent
+  }
+}, { passive: false });
+
+// (Optionnel) : retour visuel léger dans la barre de statut
+document.addEventListener('fullscreenchange', () => {
+  const state = document.fullscreenElement != null;
+  statusEl.textContent = state ? 'Plein écran activé' : 'Plein écran désactivé';
+  setTimeout(() => { statusEl.textContent = `Étape ${idx+1} / ${layers.length}`; }, 900);
+});
+
+  </script>
+</body>
+</html>
